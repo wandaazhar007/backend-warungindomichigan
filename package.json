@@ -4,7 +4,7 @@
   "description": "Backend warungindomichigan.com online store",
   "license": "ISC",
   "author": "wanda azhar",
-  "type": "module",
+  "type": "commonjs",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
