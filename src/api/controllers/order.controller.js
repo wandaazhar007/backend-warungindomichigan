@@ -7,6 +7,8 @@ const { FieldValue } = require('firebase-admin/firestore');
  */
 exports.createOrder = async (req, res) => {
   try {
+    // The user's ID is now available from our middleware!
+    const userId = req.user.uid;
     const { customerDetails, items } = req.body;
 
     // --- 1. Validate Input ---
@@ -61,6 +63,7 @@ exports.createOrder = async (req, res) => {
 
       // --- 4. Assemble the final order object ---
       const finalOrder = {
+        userId: userId, // <-- Link the order to the logged-in user
         customerDetails,
         items: processedItems,
         subtotal,
