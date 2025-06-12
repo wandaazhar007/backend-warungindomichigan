@@ -1,20 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/product.controller');
+const { verifyToken, isAdmin } = require('../middleware/auth.middleware');
 
-// GET /api/products - Fetch all products
+// GET routes are public - anyone can see products
 router.get('/', productController.getAllProducts);
-
-// GET /api/products/:productId - Fetch a single product
 router.get('/:productId', productController.getProductById);
 
-// POST /api/products - Create a new product (Admin)
-router.post('/', productController.createProduct);
-
-// PUT /api/products/:productId - Update a product (Admin)
-router.put('/:productId', productController.updateProduct);
-
-// DELETE /api/products/:productId - Delete a product (Admin)
-router.delete('/:productId', productController.deleteProduct);
+// POST, PUT, DELETE routes are protected and require an admin
+router.post('/', verifyToken, isAdmin, productController.createProduct);
+router.put('/:productId', verifyToken, isAdmin, productController.updateProduct);
+router.delete('/:productId', verifyToken, isAdmin, productController.deleteProduct);
 
 module.exports = router;
