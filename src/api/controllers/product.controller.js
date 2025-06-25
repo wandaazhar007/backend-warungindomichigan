@@ -43,18 +43,30 @@ exports.createProduct = async (req, res) => {
  */
 exports.getAllProducts = async (req, res) => {
   try {
-    const { category } = req.query;
-    let query = db.collection('products');
+    const { category, lastVisible } = req.query;
+    const productsRef = db.collection('products');
+    let query = productsRef.orderBy('name').limit(10); // Order by name and limit to 10 results per page
 
-    // If a category is provided in the query string, filter by it
+    // If a category filter is applied
     if (category) {
       query = query.where('category', '==', category);
+    }
+
+    // If 'lastVisible' is provided, fetch the next page
+    if (lastVisible) {
+      const lastVisibleDoc = await productsRef.doc(lastVisible).get();
+      if (lastVisibleDoc.exists) {
+        query = query.startAfter(lastVisibleDoc);
+      }
     }
 
     const snapshot = await query.get();
 
     if (snapshot.empty) {
-      return res.status(200).json({ message: 'No products found.', data: [] });
+      return res.status(200).json({
+        message: 'No products found.',
+        data: { products: [], lastVisible: null }
+      });
     }
 
     const products = [];
@@ -62,7 +74,17 @@ exports.getAllProducts = async (req, res) => {
       products.push({ id: doc.id, ...doc.data() });
     });
 
-    res.status(200).json({ message: 'Products fetched successfully', data: products });
+    // Get the last visible document to use as the next cursor
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    const newLastVisible = lastDoc ? lastDoc.id : null;
+
+    res.status(200).json({
+      message: 'Products fetched successfully',
+      data: {
+        products,
+        lastVisible: newLastVisible,
+      }
+    });
   } catch (error) {
     console.error("Error fetching products: ", error);
     res.status(500).json({ message: 'Failed to fetch products.', error: error.message });
