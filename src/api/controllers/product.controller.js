@@ -1,69 +1,75 @@
 const { db } = require('../../config/firebase.config.js');
 
 /**
- * Creates a new product in the Firestore database.
+ * Generates searchable keywords and prefixes for a product name.
+ * @param {string} name The name of the product.
+ * @returns {object} An object containing an array of keywords and an array of prefixes.
+ */
+const generateSearchableData = (name) => {
+  if (!name) return { keywords: [], prefixes: [] };
+
+  const nameInLowerCase = name.toLowerCase();
+  const keywords = nameInLowerCase.split(' ').filter(word => word);
+  const prefixes = new Set(); // Use a Set to avoid duplicate prefixes
+
+  keywords.forEach(word => {
+    for (let i = 1; i <= word.length; i++) {
+      prefixes.add(word.substring(0, i));
+    }
+  });
+
+  return { keywords, prefixes: Array.from(prefixes) };
+};
+
+/**
+ * Creates a new product, including search keywords and prefixes.
  */
 exports.createProduct = async (req, res) => {
   try {
-    const { name, description, price, imageUrl, category, stockQuantity, dimensions } = req.body;
-
-    // Basic validation
-    if (!name || !price || !category) {
-      return res.status(400).json({ message: "Missing required fields: name, price, and category are required." });
-    }
+    const productData = req.body;
+    const { keywords, prefixes } = generateSearchableData(productData.name);
 
     const newProduct = {
-      name,
-      description: description || '',
-      price, // Remember to store this as an integer (cents)
-      imageUrl: imageUrl || '',
-      category,
-      stockQuantity: stockQuantity || 0,
-      dimensions: dimensions || {},
+      ...productData,
+      name_keywords: keywords,
+      name_search_prefixes: prefixes, // <-- Add prefixes
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
-    // Add the new product to the "products" collection
     const docRef = await db.collection('products').add(newProduct);
 
     res.status(201).json({
       message: 'Product created successfully',
-      productId: docRef.id,
-      data: newProduct
+      data: { id: docRef.id, ...newProduct }
     });
   } catch (error) {
-    console.error("Error creating product: ", error);
     res.status(500).json({ message: 'Failed to create product.', error: error.message });
   }
 };
 
+/**
+ * Retrieves products using prefix search on keywords.
+ */
 exports.getAllProducts = async (req, res) => {
   try {
     const { category, lastVisible, searchTerm } = req.query;
     const productsRef = db.collection('products');
-
-    // Start with a base query ordered by name
     let query = productsRef.orderBy('name');
 
-    // --- NEW SEARCH LOGIC ---
-    // If a search term is provided, filter the results.
-    // This query looks for names that are greater than or equal to the search term
-    // and less than the search term plus a high-value character.
-    // This is a common way to implement "starts with" search in Firestore.
+    // --- NEW PREFIX SEARCH LOGIC ---
     if (searchTerm) {
-      query = query.where('name', '>=', searchTerm).where('name', '<=', searchTerm + '\uf8ff');
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      // Use the new prefixes field for "starts-with" search on any word
+      query = query.where('name_search_prefixes', 'array-contains', lowerCaseSearchTerm);
     }
 
-    // Set a limit for pagination
     query = query.limit(10);
 
-    // If a category filter is applied (can be combined with search)
     if (category) {
       query = query.where('category', '==', category);
     }
 
-    // If 'lastVisible' is provided for pagination
     if (lastVisible) {
       const lastVisibleDoc = await productsRef.doc(lastVisible).get();
       if (lastVisibleDoc.exists) {
@@ -74,29 +80,19 @@ exports.getAllProducts = async (req, res) => {
     const snapshot = await query.get();
 
     if (snapshot.empty) {
-      return res.status(200).json({
-        message: 'No products found.',
-        data: { products: [], lastVisible: null }
-      });
+      return res.status(200).json({ data: { products: [], lastVisible: null } });
     }
 
-    const products = [];
-    snapshot.forEach(doc => {
-      products.push({ id: doc.id, ...doc.data() });
-    });
-
+    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const lastDoc = snapshot.docs[snapshot.docs.length - 1];
     const newLastVisible = lastDoc ? lastDoc.id : null;
 
     res.status(200).json({
       message: 'Products fetched successfully',
-      data: {
-        products,
-        lastVisible: newLastVisible,
-      }
+      data: { products, lastVisible: newLastVisible }
     });
   } catch (error) {
-    console.error("Error fetching products: ", error);
+    console.error("Error fetching products: ", error); // Keep console log for debugging
     res.status(500).json({ message: 'Failed to fetch products.', error: error.message });
   }
 };
@@ -122,28 +118,25 @@ exports.getProductById = async (req, res) => {
 };
 
 /**
- * Updates an existing product.
+ * Updates an existing product, regenerating search fields if the name changes.
  */
 exports.updateProduct = async (req, res) => {
   try {
     const { productId } = req.params;
     const dataToUpdate = req.body;
 
-    const docRef = db.collection('products').doc(productId);
-    const doc = await docRef.get();
-
-    if (!doc.exists) {
-      return res.status(404).json({ message: 'Product not found' });
+    if (dataToUpdate.name) {
+      const { keywords, prefixes } = generateSearchableData(dataToUpdate.name);
+      dataToUpdate.name_keywords = keywords;
+      dataToUpdate.name_search_prefixes = prefixes; // <-- Add prefixes on update
     }
 
-    // Add the updatedAt timestamp
     dataToUpdate.updatedAt = new Date();
-
+    const docRef = db.collection('products').doc(productId);
     await docRef.update(dataToUpdate);
 
-    res.status(200).json({ message: `Product with ID ${productId} updated successfully` });
+    res.status(200).json({ message: `Product updated successfully` });
   } catch (error) {
-    console.error("Error updating product: ", error);
     res.status(500).json({ message: 'Failed to update product.', error: error.message });
   }
 };
