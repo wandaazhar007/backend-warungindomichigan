@@ -38,21 +38,32 @@ exports.createProduct = async (req, res) => {
   }
 };
 
-/**
- * Retrieves all products from the database, with optional category filtering.
- */
 exports.getAllProducts = async (req, res) => {
   try {
-    const { category, lastVisible } = req.query;
+    const { category, lastVisible, searchTerm } = req.query;
     const productsRef = db.collection('products');
-    let query = productsRef.orderBy('name').limit(10); // Order by name and limit to 10 results per page
 
-    // If a category filter is applied
+    // Start with a base query ordered by name
+    let query = productsRef.orderBy('name');
+
+    // --- NEW SEARCH LOGIC ---
+    // If a search term is provided, filter the results.
+    // This query looks for names that are greater than or equal to the search term
+    // and less than the search term plus a high-value character.
+    // This is a common way to implement "starts with" search in Firestore.
+    if (searchTerm) {
+      query = query.where('name', '>=', searchTerm).where('name', '<=', searchTerm + '\uf8ff');
+    }
+
+    // Set a limit for pagination
+    query = query.limit(10);
+
+    // If a category filter is applied (can be combined with search)
     if (category) {
       query = query.where('category', '==', category);
     }
 
-    // If 'lastVisible' is provided, fetch the next page
+    // If 'lastVisible' is provided for pagination
     if (lastVisible) {
       const lastVisibleDoc = await productsRef.doc(lastVisible).get();
       if (lastVisibleDoc.exists) {
@@ -74,7 +85,6 @@ exports.getAllProducts = async (req, res) => {
       products.push({ id: doc.id, ...doc.data() });
     });
 
-    // Get the last visible document to use as the next cursor
     const lastDoc = snapshot.docs[snapshot.docs.length - 1];
     const newLastVisible = lastDoc ? lastDoc.id : null;
 
