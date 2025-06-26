@@ -1,5 +1,7 @@
 const { db } = require('../../config/firebase.config.js');
 const { FieldValue } = require('firebase-admin/firestore');
+// const { sendOrderStatusUpdateEmail } = require('../../services/emailService');
+const { sendOrderStatusUpdateEmail } = require('../services/emailService');
 
 /**
  * Creates a new order, calculates the total, and updates product stock
@@ -156,5 +158,108 @@ exports.getOrdersByUser = async (req, res) => {
   } catch (error) {
     console.error("Error fetching user orders: ", error);
     res.status(500).json({ message: 'Failed to fetch user orders.', error: error.message });
+  }
+};
+
+/**
+ * Retrieves a paginated list of all orders, with search by customer name/email.
+ */
+exports.getAllOrders = async (req, res) => {
+  try {
+    const { lastVisible, searchTerm } = req.query;
+    const ordersRef = db.collection('orders');
+    let query = ordersRef.orderBy('createdAt', 'desc'); // Show newest orders first
+
+    // IMPORTANT: Because Firestore cannot search inside nested objects with a query,
+    // we will fetch all documents and filter on the server. This is acceptable
+    // for a few hundred to a few thousand orders. For very large scale, a different
+    // data structure (like duplicating customer name on the top level) would be needed.
+    if (searchTerm) {
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      // Fetch all orders and then filter
+      const allOrdersSnapshot = await query.get();
+      let allOrders = allOrdersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const filteredOrders = allOrders.filter(order => {
+        const nameMatch = order.customerDetails?.name?.toLowerCase().includes(lowerCaseSearchTerm);
+        const emailMatch = order.customerDetails?.email?.toLowerCase().includes(lowerCaseSearchTerm);
+        return nameMatch || emailMatch;
+      });
+
+      // Note: This server-side filter doesn't support pagination.
+      // We will return the full filtered list.
+      return res.status(200).json({
+        message: "Filtered orders fetched successfully",
+        data: { orders: filteredOrders, lastVisible: null }
+      });
+    }
+
+    // --- PAGINATION LOGIC (for non-search requests) ---
+    query = query.limit(10);
+    if (lastVisible) {
+      const lastVisibleDoc = await ordersRef.doc(lastVisible).get();
+      if (lastVisibleDoc.exists) {
+        query = query.startAfter(lastVisibleDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return res.status(200).json({ data: { orders: [], lastVisible: null } });
+    }
+
+    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    const newLastVisible = lastDoc ? lastDoc.id : null;
+
+    res.status(200).json({
+      message: "All orders fetched successfully",
+      data: { orders, lastVisible: newLastVisible }
+    });
+
+  } catch (error) {
+    console.error("Error fetching all orders: ", error);
+    res.status(500).json({ message: 'Failed to fetch all orders.', error: error.message });
+  }
+};
+
+/**
+ * Updates the status of a specific order and sends a notification.
+ */
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ message: "Status is required." });
+    }
+
+    const orderRef = db.collection('orders').doc(orderId);
+    const doc = await orderRef.get();
+    if (!doc.exists) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    // Update the status in Firestore
+    await orderRef.update({ orderStatus: status, updatedAt: new Date() });
+
+    const orderData = doc.data();
+
+    // Send email notification after successful update
+    if (orderData.customerDetails && orderData.customerDetails.email) {
+      await sendOrderStatusUpdateEmail(
+        orderData.customerDetails.email,
+        orderData.customerDetails.name,
+        orderId,
+        status
+      );
+    }
+
+    res.status(200).json({ message: `Order ${orderId} status updated to ${status}` });
+  } catch (error) {
+    console.error(`Error updating order status for ${req.params.orderId}:`, error);
+    res.status(500).json({ message: 'Failed to update order status.', error: error.message });
   }
 };

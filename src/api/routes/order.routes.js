@@ -3,6 +3,9 @@ const router = express.Router();
 const orderController = require('../controllers/order.controller');
 const { verifyToken, isAdmin } = require('../middleware/auth.middleware');
 
+
+// GET /api/orders - An admin can get all orders
+router.get('/', verifyToken, isAdmin, orderController.getAllOrders);
 // A regular authenticated user can create an order
 router.post('/', verifyToken, orderController.createOrder);
 
@@ -12,5 +15,9 @@ router.post('/', verifyToken, orderController.createOrder);
 
 // GET /api/orders/user/:userId - An admin can get all orders for a specific user
 router.get('/user/:userId', verifyToken, isAdmin, orderController.getOrdersByUser);
+
+// PUT /api/orders/:orderId/status - An admin can update an order's status
+router.put('/:orderId/status', verifyToken, isAdmin, orderController.updateOrderStatus);
+
 
 module.exports = router;
