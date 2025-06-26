@@ -102,3 +102,44 @@ exports.createOrder = async (req, res) => {
     res.status(isClientError ? 400 : 500).json({ message: 'Failed to create order.', error: error.message });
   }
 };
+
+/**
+ * Retrieves all orders for a specific user, with support for pagination.
+ */
+exports.getOrdersByUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { lastVisible } = req.query;
+    const ordersRef = db.collection('orders');
+
+    // Create a query to find orders for the specific user
+    let query = ordersRef.where('userId', '==', userId).orderBy('createdAt', 'desc').limit(10);
+
+    // Handle pagination
+    if (lastVisible) {
+      const lastVisibleDoc = await ordersRef.doc(lastVisible).get();
+      if (lastVisibleDoc.exists) {
+        query = query.startAfter(lastVisibleDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return res.status(200).json({ data: { orders: [], lastVisible: null } });
+    }
+
+    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    const newLastVisible = lastDoc ? lastDoc.id : null;
+
+    res.status(200).json({
+      message: "User orders fetched successfully",
+      data: { orders, lastVisible: newLastVisible }
+    });
+
+  } catch (error) {
+    console.error("Error fetching user orders: ", error);
+    res.status(500).json({ message: 'Failed to fetch user orders.', error: error.message });
+  }
+};

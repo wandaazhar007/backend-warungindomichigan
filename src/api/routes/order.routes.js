@@ -10,4 +10,7 @@ router.post('/', verifyToken, orderController.createOrder);
 // router.get('/', verifyToken, isAdmin, orderController.getAllOrders);
 // router.get('/:orderId', verifyToken, orderController.getOrderById); // Could be for customer or admin
 
+// GET /api/orders/user/:userId - An admin can get all orders for a specific user
+router.get('/user/:userId', verifyToken, isAdmin, orderController.getOrdersByUser);
+
 module.exports = router;
