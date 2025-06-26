@@ -102,3 +102,59 @@ exports.createOrder = async (req, res) => {
     res.status(isClientError ? 400 : 500).json({ message: 'Failed to create order.', error: error.message });
   }
 };
+
+/**
+ * Retrieves all orders for a specific user, with support for pagination and search by Order ID.
+ */
+exports.getOrdersByUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { lastVisible, searchTerm } = req.query; // Add searchTerm
+    const ordersRef = db.collection('orders');
+
+    let query = ordersRef.where('userId', '==', userId).orderBy('createdAt', 'desc');
+
+    // --- NEW SEARCH LOGIC ---
+    // If a search term is provided, we assume it's an Order ID.
+    // We will fetch that specific order directly.
+    if (searchTerm) {
+      const doc = await ordersRef.doc(searchTerm).get();
+      if (doc.exists && doc.data().userId === userId) {
+        const order = { id: doc.id, ...doc.data() };
+        // Return just this one order
+        return res.status(200).json({ data: { orders: [order], lastVisible: null } });
+      } else {
+        // If no order is found with that ID for this user, return an empty list
+        return res.status(200).json({ data: { orders: [], lastVisible: null } });
+      }
+    }
+
+    // --- PAGINATION LOGIC (for non-search requests) ---
+    query = query.limit(10);
+    if (lastVisible) {
+      const lastVisibleDoc = await ordersRef.doc(lastVisible).get();
+      if (lastVisibleDoc.exists) {
+        query = query.startAfter(lastVisibleDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return res.status(200).json({ data: { orders: [], lastVisible: null } });
+    }
+
+    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    const newLastVisible = lastDoc ? lastDoc.id : null;
+
+    res.status(200).json({
+      message: "User orders fetched successfully",
+      data: { orders, lastVisible: newLastVisible }
+    });
+
+  } catch (error) {
+    console.error("Error fetching user orders: ", error);
+    res.status(500).json({ message: 'Failed to fetch user orders.', error: error.message });
+  }
+};
