@@ -263,3 +263,27 @@ exports.updateOrderStatus = async (req, res) => {
     res.status(500).json({ message: 'Failed to update order status.', error: error.message });
   }
 };
+
+/**
+ * Retrieves a single order by its ID.
+ */
+exports.getOrderById = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const orderRef = db.collection('orders').doc(orderId);
+    const doc = await orderRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    res.status(200).json({
+      message: "Order fetched successfully",
+      data: { id: doc.id, ...doc.data() }
+    });
+
+  } catch (error) {
+    console.error(`Error fetching order ${req.params.orderId}:`, error);
+    res.status(500).json({ message: 'Failed to fetch order.', error: error.message });
+  }
+};
