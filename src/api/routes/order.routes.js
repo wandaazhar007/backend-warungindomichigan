@@ -19,5 +19,7 @@ router.get('/user/:userId', verifyToken, isAdmin, orderController.getOrdersByUse
 // PUT /api/orders/:orderId/status - An admin can update an order's status
 router.put('/:orderId/status', verifyToken, isAdmin, orderController.updateOrderStatus);
 
+// GET /api/orders/:orderId - An admin can get a single order by its ID
+router.get('/:orderId', verifyToken, isAdmin, orderController.getOrderById);
 
 module.exports = router;
