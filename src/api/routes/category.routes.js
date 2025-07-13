@@ -3,15 +3,17 @@ const router = express.Router();
 const categoryController = require('../controllers/category.controller');
 const { verifyToken, isAdmin } = require('../middleware/auth.middleware');
 
-// Protect all category routes
-router.use(verifyToken, isAdmin);
+// --- PUBLIC ROUTE ---
+// Anyone can view the list of all categories
+router.get('/', categoryController.getAllCategories);
 
-router.route('/')
-  .get(categoryController.getAllCategories)
-  .post(categoryController.createCategory);
+// --- PROTECTED ADMIN ROUTES ---
+// Only an admin can create, update, or delete categories
+router.post('/', verifyToken, isAdmin, categoryController.createCategory);
 
-router.route('/:categoryId')
-  .put(categoryController.updateCategory)
-  .delete(categoryController.deleteCategory);
+router.put('/:categoryId', verifyToken, isAdmin, categoryController.updateCategory);
+
+router.delete('/:categoryId', verifyToken, isAdmin, categoryController.deleteCategory);
+
 
 module.exports = router;
