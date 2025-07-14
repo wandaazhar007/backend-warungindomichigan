@@ -55,20 +55,27 @@ exports.getAllProducts = async (req, res) => {
   try {
     const { category, lastVisible, searchTerm } = req.query;
     const productsRef = db.collection('products');
-    let query = productsRef.orderBy('name');
 
-    // --- NEW PREFIX SEARCH LOGIC ---
+    // Start with a base query
+    let query = productsRef;
+
+    // --- APPLY FILTERS AND ORDERING ---
+    // If a search term is provided, filter by prefixes
     if (searchTerm) {
       const lowerCaseSearchTerm = searchTerm.toLowerCase();
-      // Use the new prefixes field for "starts-with" search on any word
       query = query.where('name_search_prefixes', 'array-contains', lowerCaseSearchTerm);
     }
 
-    query = query.limit(10);
-
+    // If a category is provided, add that filter
     if (category) {
       query = query.where('category', '==', category);
     }
+
+    // Always order by name for consistent results
+    query = query.orderBy('name');
+
+    // Apply pagination limit
+    query = query.limit(10);
 
     if (lastVisible) {
       const lastVisibleDoc = await productsRef.doc(lastVisible).get();
@@ -92,7 +99,7 @@ exports.getAllProducts = async (req, res) => {
       data: { products, lastVisible: newLastVisible }
     });
   } catch (error) {
-    console.error("Error fetching products: ", error); // Keep console log for debugging
+    console.error("Error fetching products: ", error);
     res.status(500).json({ message: 'Failed to fetch products.', error: error.message });
   }
 };
