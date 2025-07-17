@@ -99,8 +99,16 @@ exports.getAllProducts = async (req, res) => {
       data: { products, lastVisible: newLastVisible }
     });
   } catch (error) {
-    console.error("Error fetching products: ", error);
-    res.status(500).json({ message: 'Failed to fetch products.', error: error.message });
+    // console.error("Error fetching products: ", error);
+    // res.status(500).json({ message: 'Failed to fetch products.', error: error.message });
+
+    // These logs will help us see the exact error from Firestore
+    console.error("--- FIRESTORE QUERY ERROR ---");
+    console.error("If the error below contains a URL, copy and paste it into your browser to create the required index.");
+    console.error(error); // Log the full error object
+
+    res.status(500).json({ message: "Failed to fetch products.", error: error.message });
+
   }
 };
 
