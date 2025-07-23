@@ -1,16 +1,14 @@
 {
   "name": "backend-warungindomichigan",
   "version": "1.0.0",
-  "description": "Backend warungindomichigan.com online store",
-  "license": "ISC",
-  "author": "wanda azhar",
-  "type": "commonjs",
-  "main": "index.js",
+  "description": "Backend for WarungIndoMichigan",
+  "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node src/server.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon -r dotenv/config src/index.js",
+    "start": "node -r dotenv/config src/index.js"
   },
+  "author": "Wanda Azhar",
+  "license": "ISC",
   "dependencies": {
     "@sendgrid/mail": "^8.1.3",
     "cors": "^2.8.5",
@@ -18,7 +16,7 @@
     "express": "^4.19.2",
     "firebase-admin": "^12.1.0",
     "shippo": "^1.7.1",
-    "stripe": "^18.3.0"
+    "stripe": "^15.8.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
