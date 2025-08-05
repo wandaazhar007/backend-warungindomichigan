@@ -22,4 +22,10 @@ router.put('/:orderId/status', verifyToken, isAdmin, orderController.updateOrder
 // GET /api/orders/:orderId - An admin can get a single order by its ID
 router.get('/:orderId', verifyToken, isAdmin, orderController.getOrderById);
 
+
+// GET /api/orders/my-orders - A regular logged-in user can get their own orders
+router.get('/my-orders', verifyToken, orderController.getMyOrders);
+
+
+
 module.exports = router;
