@@ -1,7 +1,6 @@
 const { db } = require('../../config/firebase.config.js');
 const { FieldValue } = require('firebase-admin/firestore');
-// const { sendOrderStatusUpdateEmail } = require('../../services/emailService');
-const { sendOrderStatusUpdateEmail } = require('../services/emailService');
+const { sendOrderStatusUpdateEmail, sendOrderConfirmationEmail } = require('../services/emailService');
 
 /**
  * Creates a new order, calculates the total, and updates product stock
@@ -10,66 +9,63 @@ const { sendOrderStatusUpdateEmail } = require('../services/emailService');
 exports.createOrder = async (req, res) => {
   try {
     const userId = req.user.uid;
-    // Destructure the new fields from the request body
     const { customerDetails, items, paymentMethod, shippingCost, totalAmount } = req.body;
 
-    if (!customerDetails || !items || !Array.isArray(items) || items.length === 0 || !paymentMethod || totalAmount === undefined) {
-      return res.status(400).json({ message: "Invalid order data. Missing required fields." });
+    if (!customerDetails || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Invalid order data." });
     }
 
     const orderRef = db.collection('orders').doc();
 
-    await db.runTransaction(async (transaction) => {
+    // --- THIS IS THE FIX ---
+    // Capture the result of the transaction in a variable
+    const finalOrderData = await db.runTransaction(async (transaction) => {
       let subtotal = 0;
-      const processedItems = [];
       const productUpdates = [];
 
       for (const item of items) {
         const productRef = db.collection('products').doc(item.productId);
         const productDoc = await transaction.get(productRef);
-        if (!productDoc.exists) throw new Error(`Product with ID ${item.productId} not found.`);
+        if (!productDoc.exists) throw new Error(`Product ${item.productId} not found.`);
 
         const productData = productDoc.data();
         if (productData.stockQuantity < item.quantity) {
-          throw new Error(`Insufficient stock for product: ${productData.name}.`);
+          throw new Error(`Insufficient stock for ${productData.name}.`);
         }
 
         subtotal += productData.price * item.quantity;
-        processedItems.push({
-          productId: item.productId, name: productData.name,
-          price: productData.price, quantity: item.quantity,
-        });
         productUpdates.push({ ref: productRef, quantity: item.quantity });
       }
 
-      // We will trust the final totals calculated by the frontend for now
-      // A more robust solution would re-calculate and verify totals on the backend
-      const finalOrder = {
+      const orderPayload = {
+        id: orderRef.id,
         userId,
         customerDetails,
-        items: processedItems,
-        paymentMethod, // <-- Add payment method
+        items,
+        paymentMethod,
+        shippingCost: shippingCost || 0,
+        totalAmount,
         subtotal,
-        shippingCost: shippingCost || 0, // <-- Add shipping cost
-        totalAmount, // <-- Add final total cost
         orderStatus: 'Pending',
-        paymentStatus: 'Paid', // Assuming payment is handled on the client
+        paymentStatus: 'Paid',
         createdAt: new Date(),
       };
 
-      transaction.set(orderRef, finalOrder);
+      transaction.set(orderRef, orderPayload);
       productUpdates.forEach(update => {
         transaction.update(update.ref, { stockQuantity: FieldValue.increment(-update.quantity) });
       });
 
-      return { id: orderRef.id, ...finalOrder };
+      // Return the complete order data from the transaction
+      return orderPayload;
     });
 
-    // Note: To see these changes, you will need to create a new test order
-    // from your main website after its checkout process is updated to send this new data.
+    // Now that finalOrderData is correctly populated, this will work
+    if (finalOrderData) {
+      await sendOrderConfirmationEmail(finalOrderData);
+    }
 
     res.status(201).json({ message: 'Order created successfully' });
-
   } catch (error) {
     console.error("Error creating order: ", error);
     res.status(500).json({ message: 'Failed to create order.', error: error.message });
